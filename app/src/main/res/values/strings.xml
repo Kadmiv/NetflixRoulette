@@ -1,3 +1,16 @@
 <resources>
-    <string name="app_name">NetflixRoulette</string>
+    <string name="app_name">FilmsRepo</string>
+    <string name="search_hint_text">Entry word</string>
+    <string name="nav_header_title">All movies in your phone</string>
+    <string name="nav_header_desc">FilmsApi</string>
+    <string name="saved_movies_text">Saved Movies</string>
+    <string name="search_movies_text">Search Movies</string>
+    <string name="not_find_for_request">Nothing found</string>
+    <string name="connection_error_text">Connection error!\nCheck your internet.</string>
+    <string name="search_by_title_hint">Enter movie title...</string>
+    <string name="search_by_director_hint">Enter director name...</string>
+    <string name="error_text">Something went wrong :(</string>
+    <string name="year_text">Year:</string>
+    <string name="rating_text">Rating:</string>
+    <string name="director_text">Director:</string>
 </resources>
