@@ -8,7 +8,7 @@ import android.support.annotation.NonNull
 
 @Entity(tableName = "films_table")
 
-class FilmModel() : BaseItem(), Parcelable {
+class FilmModel() : BaseModel(), Parcelable {
     @NonNull
     @PrimaryKey
     override var id: Long = 0

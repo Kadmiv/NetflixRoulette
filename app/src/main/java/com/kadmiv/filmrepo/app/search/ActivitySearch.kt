@@ -1,8 +1,11 @@
-package com.kadmiv.filmrepo.app.activity_search
+package com.kadmiv.filmrepo.app.search
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.databinding.DataBindingUtil
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Parcelable
@@ -18,9 +21,9 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.kadmiv.filmrepo.R
-import com.kadmiv.filmrepo.app.activity_item_details.ActivityItemDetails
-import com.kadmiv.filmrepo.app.activity_item_details.PresenterDetails
-import com.kadmiv.filmrepo.app.activity_main.*
+import com.kadmiv.filmrepo.app.App
+import com.kadmiv.filmrepo.app.details.ActivityItemDetails
+import com.kadmiv.filmrepo.app.main.*
 import com.kadmiv.filmrepo.base.adaptes.normal_adapter.BaseNormalAdapter
 import com.kadmiv.filmrepo.base.dialogs.BaseDialog
 import com.kadmiv.filmrepo.databinding.ActivitySearchBinding
@@ -35,10 +38,10 @@ import kotlinx.android.synthetic.main.activity_search.*
 import kotlinx.android.synthetic.main.app_bar_activity_search.*
 import kotlinx.android.synthetic.main.content_activity.*
 import java.lang.Exception
+import java.util.ArrayList
 
 
 interface IView {
-    fun initRecyclerView() {}
     fun initRecyclerView(items: List<FilmModel>)
     fun showItemDetails(item: FilmModel)
     fun showSearchView(searchType: SearchType)
@@ -47,6 +50,8 @@ interface IView {
     fun showSearchView()
     fun setViewState(viewState: Int)
     fun setSuggestions(suggestions: Array<String?>)
+    fun addNewData(newItem: ArrayList<FilmModel>)
+    fun hasConnection(): Boolean
 }
 
 class ActivitySearch : AppCompatActivity(), IView {
@@ -57,8 +62,7 @@ class ActivitySearch : AppCompatActivity(), IView {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        mPresenter = PresenterSearch.getInstance(this)
-        mPresenter.searchType = setSearchType(intent.getStringExtra(EXTRAS_SEARCH_TYPE))
+        mPresenter = PresenterSearch(this)
 
         val binding = DataBindingUtil.setContentView<ActivitySearchBinding>(this, R.layout.activity_search)
         binding.listener = mPresenter
@@ -76,38 +80,53 @@ class ActivitySearch : AppCompatActivity(), IView {
         mPresenter.onStop()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        mPresenter.onDestroy()
+    }
+
     override fun onSaveInstanceState(outState: Bundle?) {
         super.onSaveInstanceState(outState)
         outState?.putParcelable(EXTRAS_RECYCLER_STATE, itemRecycler.layoutManager?.onSaveInstanceState())
+        outState?.putParcelableArrayList(EXTRAS_ITEMS, adapter!!.mValues)
     }
 
+    var restoredPosition = 0
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (data == null) {
             return
         }
         if (resultCode == RESULT_OK) {
             if (requestCode == REQUEST_CODE) {
-                val position = data.getIntExtra(EXTRAS_SELECTED_ITEM, 0)
-                itemRecycler.scrollToPosition(position)
+                recyclerState = null
+                restoredPosition = data.getIntExtra(EXTRAS_ITEM_POSITION, 0)
+                mPresenter.oldList = data.getParcelableArrayListExtra<FilmModel>(EXTRAS_ITEMS)
             }
         }
-
     }
 
     override fun onBackPressed() {
-        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            drawerLayout.closeDrawer(GravityCompat.START)
-        } else {
-            mPresenter.onDestroy()
-            PresenterDetails.setInstanceNull()
-            super.onBackPressed()
+        when {
+            searchView.isSearchOpen -> searchView.closeSearch()
+            drawerLayout.isDrawerOpen(GravityCompat.START) -> drawerLayout.closeDrawer(GravityCompat.START)
+            else -> super.onBackPressed()
         }
     }
 
     private fun initOtherComponents(savedInstanceState: Bundle?) {
-        when (mPresenter.searchType) {
-            SEARCH_BY_TITLE -> searchView.setHint(resources.getString(R.string.search_by_title_hint))
-            SEARCH_BY_DIRECTOR -> searchView.setHint(resources.getString(R.string.search_by_director_hint))
+
+        if (savedInstanceState != null) {
+            recyclerState = savedInstanceState.getParcelable(EXTRAS_RECYCLER_STATE)
+            mPresenter.oldList = savedInstanceState.getParcelableArrayList<FilmModel>(EXTRAS_ITEMS)
+        }
+
+        val searchType = intent.getStringExtra(EXTRAS_SEARCH_TYPE)
+        mPresenter.searchType = setSearchType(searchType)
+
+        // Set search hint
+        when (searchType) {
+            SEARCH_BY_TITLE.name -> searchView.setHint(resources.getString(R.string.search_by_title_hint))
+            SEARCH_BY_DIRECTOR.name -> searchView.setHint(resources.getString(R.string.search_by_person_hint))
         }
 
         nav_view_part.setNavigationItemSelectedListener(mPresenter)
@@ -116,64 +135,38 @@ class ActivitySearch : AppCompatActivity(), IView {
             object : MaterialSearchView.OnQueryTextListener {
                 override fun onQueryTextSubmit(queryText: String): Boolean {
                     Log.d("12", queryText)
-                    mPresenter.onEnteredSearchQuery(queryText)
+                    mPresenter.onSearchQueryEntered(queryText)
                     searchView.clearFocus()
                     return false
                 }
 
                 override fun onQueryTextChange(newText: String): Boolean {
-                    if (mPresenter.searchType == SEARCH_BY_DIRECTOR) {
-                        mPresenter.onSearchQueryChange(newText)
-                    }
+                    if (newText.isNotEmpty())
+                        mPresenter.onSearchQueryChanged(newText)
                     return true
                 }
             })
-        onRestoreState(savedInstanceState)
     }
-
-    private fun onRestoreState(savedInstanceState: Bundle?) {
-        Log.d("12", "onRestoreInstanceState")
-        if (savedInstanceState != null) {
-            recyclerState = savedInstanceState.getParcelable(EXTRAS_RECYCLER_STATE)
-        }
-    }
-
 
     override fun initRecyclerView(items: List<FilmModel>) {
-        var recyclerView = itemRecycler
-        var data = arrayListOf<FilmModel>()
+
+        val recyclerView = itemRecycler
+        val data = arrayListOf<FilmModel>()
         data.addAll(items)
 
-        recyclerView.visibility = View.VISIBLE
-        if (data.isEmpty()) {
-            recyclerView.visibility = View.INVISIBLE
-            return
+        //Adapter
+        adapter = BaseNormalAdapter(mPresenter, R.layout.item_film)
+        adapter?.mValues?.addAll(data)
+        recyclerView.adapter = adapter
+
+        //Manager
+        val columns = when (resources.configuration.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> LANDSCAPE_COLUMN_COUNT
+            else -> PORTRAIT_COLUMN_COUNT
         }
 
-        // Check adapter
-        if (adapter == null) {
-            adapter = BaseNormalAdapter(mPresenter!!, R.layout.item_film)
-            adapter?.mValues?.addAll(data)
-            recyclerView.adapter = adapter
-        } else {
-            adapter?.onNewData(data)
-        }
-
-        if (recyclerView.layoutManager == null) {
-            var spanCount = when (resources.configuration.orientation) {
-                Configuration.ORIENTATION_LANDSCAPE -> LANDSCAPE_COLUMN_COUNT
-                else -> PORTRAIT_COLUMN_COUNT
-            }
-
-            val mLayoutManager = GridLayoutManager(this, spanCount)
-            recyclerView.layoutManager = mLayoutManager
-
-            if (recyclerState != null)
-                recyclerView.layoutManager!!.onRestoreInstanceState(recyclerState)
-        }
-
-
-        recyclerView.clearOnScrollListeners()
+        val lManager = GridLayoutManager(this, columns)
+        recyclerView.layoutManager = lManager
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
@@ -192,6 +185,17 @@ class ActivitySearch : AppCompatActivity(), IView {
                 Log.d("12", "Recycler position $firstVisible")
             }
         })
+
+        if (recyclerState != null)
+            recyclerView.layoutManager!!.onRestoreInstanceState(recyclerState)
+        else
+        // Restored position after closing ActivityDetails
+            itemRecycler.scrollToPosition(restoredPosition)
+
+    }
+
+    override fun addNewData(newItem: ArrayList<FilmModel>) {
+        adapter!!.onNewData(newItem)
     }
 
     override fun showDrawer() {
@@ -222,16 +226,16 @@ class ActivitySearch : AppCompatActivity(), IView {
     override fun showMainActivity() {
         val intent = Intent(this, ActivityMain::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-        startActivity(intent)
         closeDrawer()
+        startActivity(intent)
     }
 
     override fun showSearchView(searchType: SearchType) {
         val intent = Intent(this, ActivitySearch::class.java)
         intent.putExtra(EXTRAS_SEARCH_TYPE, searchType.name)
         intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-        startActivity(intent)
         closeDrawer()
+        startActivity(intent)
     }
 
     override fun showItemDetails(item: FilmModel) {
@@ -255,10 +259,10 @@ class ActivitySearch : AppCompatActivity(), IView {
 
     override fun setSuggestions(suggestions: Array<String?>) {
         searchView.setSuggestions(suggestions)
-        searchView.setSuggestionIcon(resources.getDrawable(R.drawable.ic_suggestion_key))
     }
 
     override fun setViewState(viewState: Int) {
+        showLoadingProcess(false)
         when (viewState) {
             ViewState.EMPTY_STATE.value -> {
                 Log.d("12", "EMPTY_STATE")
@@ -266,11 +270,9 @@ class ActivitySearch : AppCompatActivity(), IView {
                     supportFragmentManager,
                     ""
                 )
-                showLoadingProcess(false)
             }
             ViewState.CONTENT_STATE.value -> {
                 Log.d("12", "CONTENT_STATE")
-                showLoadingProcess(false)
             }
             ViewState.LOADING_STATE.value -> {
                 Log.d("12", "LOADING_STATE")
@@ -279,7 +281,6 @@ class ActivitySearch : AppCompatActivity(), IView {
             ViewState.ERROR_STATE.value -> {
                 Log.d("12", "ERROR_STATE")
 //                BaseDialog(InfoModel(getString(R.string.error_text), R.drawable.ic_error)).show(supportFragmentManager, "")
-                showLoadingProcess(false)
             }
             ViewState.NETWORK_ERROR_STATE.value -> {
                 Log.d("12", "NETWORK_ERROR_STATE")
@@ -290,7 +291,6 @@ class ActivitySearch : AppCompatActivity(), IView {
                     )
                 } catch (ex: Exception) {
                 }
-                showLoadingProcess(false)
             }
         }
     }
@@ -311,6 +311,10 @@ class ActivitySearch : AppCompatActivity(), IView {
         } else {
             loadingProgress.visibility = View.GONE
         }
+    }
+
+    override fun hasConnection(): Boolean {
+        return App.hasConnection(this)
     }
 
 }

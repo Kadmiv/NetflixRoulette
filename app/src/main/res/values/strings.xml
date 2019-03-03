@@ -8,9 +8,12 @@
     <string name="not_find_for_request">Nothing found</string>
     <string name="connection_error_text">Connection error!\nCheck your internet.</string>
     <string name="search_by_title_hint">Enter movie title...</string>
-    <string name="search_by_director_hint">Enter director name...</string>
+    <string name="search_by_person_hint">Enter person name...</string>
     <string name="error_text">Something went wrong :(</string>
     <string name="year_text">Year:</string>
     <string name="rating_text">Rating:</string>
     <string name="director_text">Director:</string>
+    <string name="search_by_person">Search by person</string>
+    <string name="search_by_title">Search by title</string>
+    <string name="saved_text">Favorite</string>
 </resources>

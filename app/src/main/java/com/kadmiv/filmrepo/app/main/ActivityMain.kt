@@ -1,8 +1,11 @@
-package com.kadmiv.filmrepo.app.activity_main
+package com.kadmiv.filmrepo.app.main
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.databinding.DataBindingUtil
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.os.Bundle
 import android.os.Parcelable
 import android.support.v4.view.GravityCompat
@@ -13,16 +16,14 @@ import android.util.Log
 import android.view.View
 import com.balysv.materialmenu.MaterialMenuDrawable
 import com.kadmiv.filmrepo.R
-import com.kadmiv.filmrepo.app.activity_item_details.ActivityItemDetails
-import com.kadmiv.filmrepo.app.activity_search.ActivitySearch
-import com.kadmiv.filmrepo.app.activity_search.PresenterSearch
+import com.kadmiv.filmrepo.app.details.ActivityItemDetails
+import com.kadmiv.filmrepo.app.search.ActivitySearch
 import com.kadmiv.filmrepo.base.adaptes.normal_adapter.BaseNormalAdapter
 import com.kadmiv.filmrepo.databinding.ActivityMainBinding
 import com.kadmiv.filmrepo.repo.db.models.FilmModel
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.app_bar_activity_main.*
 import kotlinx.android.synthetic.main.content_activity.*
-import com.kadmiv.filmrepo.app.activity_item_details.PresenterDetails
 import com.kadmiv.filmrepo.utils.enums.SearchType
 
 
@@ -52,19 +53,16 @@ class ActivityMain : AppCompatActivity(), IView {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        mPresenter = PresenterMain.getInstance(this)
-
-        var binding = DataBindingUtil.setContentView<ActivityMainBinding>(this, R.layout.activity_main)
+        mPresenter = PresenterMain(this)
+        val binding = DataBindingUtil.setContentView<ActivityMainBinding>(this, R.layout.activity_main)
         binding.listener = mPresenter
 
-        nav_view_part.setNavigationItemSelectedListener(mPresenter)
-        onRestoreState(savedInstanceState)
+        initOtherComponents(savedInstanceState)
     }
 
     override fun onStart() {
         super.onStart()
         mPresenter.onStart()
-        PresenterSearch.setInstanceNull()
     }
 
     override fun onStop() {
@@ -77,22 +75,25 @@ class ActivityMain : AppCompatActivity(), IView {
         outState?.putParcelable(EXTRAS_RECYCLER_STATE, itemRecycler.layoutManager?.onSaveInstanceState())
     }
 
-    private fun onRestoreState(savedInstanceState: Bundle?) {
-        Log.d("12", "onRestoreInstanceState")
-        if (savedInstanceState != null) {
-            recyclerState = savedInstanceState.getParcelable(EXTRAS_RECYCLER_STATE)
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        mPresenter.onDestroy()
     }
 
     override fun onBackPressed() {
         if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
             drawerLayout.closeDrawer(GravityCompat.START)
         } else {
-            mPresenter.onDestroy()
-            PresenterMain.setInstanceNull()
-            PresenterDetails.setInstanceNull()
-            PresenterSearch.setInstanceNull()
             super.onBackPressed()
+        }
+    }
+
+    private fun initOtherComponents(savedState: Bundle?) {
+        nav_view_part.setNavigationItemSelectedListener(mPresenter)
+
+        Log.d("12", "onRestoreInstanceState")
+        if (savedState != null) {
+            recyclerState = savedState.getParcelable(EXTRAS_RECYCLER_STATE)
         }
     }
 
@@ -102,43 +103,37 @@ class ActivityMain : AppCompatActivity(), IView {
         }
         if (resultCode == RESULT_OK) {
             if (requestCode == REQUEST_CODE) {
-                val position = data.getIntExtra(EXTRAS_SELECTED_ITEM, 0)
+                val position = data.getIntExtra(EXTRAS_ITEM_POSITION, 0)
+                val dataList = data.getParcelableArrayListExtra<FilmModel>(EXTRAS_ITEMS)
+                adapter?.onNewData(dataList)
                 itemRecycler.scrollToPosition(position)
             }
         }
     }
 
     override fun initRecyclerView(items: List<FilmModel>) {
-        var recyclerView = itemRecycler
-        var data = arrayListOf<FilmModel>()
+        val recyclerView = itemRecycler
+        val data = arrayListOf<FilmModel>()
         data.addAll(items)
 
-        recyclerView.visibility = View.VISIBLE
-        if (data.isEmpty()) {
-            recyclerView.visibility = View.INVISIBLE
-            return
+        //Adapter
+        adapter = BaseNormalAdapter(mPresenter, R.layout.item_film)
+        adapter?.mValues?.addAll(data)
+        recyclerView.adapter = adapter
+
+        //Manager
+        val columns = when (resources.configuration.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> LANDSCAPE_COLUMN_COUNT
+            else -> PORTRAIT_COLUMN_COUNT
         }
 
-        if (adapter == null) {
-            adapter = BaseNormalAdapter(mPresenter, R.layout.item_film)
-            adapter?.mValues?.addAll(data)
-            recyclerView.adapter = adapter
-        } else {
-            adapter?.onNewData(data)
-        }
+        val lManager = GridLayoutManager(this, columns)
+        recyclerView.layoutManager = lManager
 
-        if (recyclerView.layoutManager == null) {
-            var spanCount = when (resources.configuration.orientation) {
-                Configuration.ORIENTATION_LANDSCAPE -> LANDSCAPE_COLUMN_COUNT
-                else -> PORTRAIT_COLUMN_COUNT
-            }
+        // Restore instance
+        if (recyclerState != null)
+            recyclerView.layoutManager!!.onRestoreInstanceState(recyclerState)
 
-            val mLayoutManager = GridLayoutManager(this, spanCount)
-            recyclerView.layoutManager = mLayoutManager
-
-            if (recyclerState != null)
-                recyclerView.layoutManager!!.onRestoreInstanceState(recyclerState)
-        }
     }
 
     override fun showItemDetails(item: FilmModel) {

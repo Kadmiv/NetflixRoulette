@@ -10,7 +10,7 @@
 
         <variable
             name="listener"
-            type="com.kadmiv.filmrepo.app.activity_item_details.PresenterDetails" />
+            type="com.kadmiv.filmrepo.app.details.PresenterDetails" />
 
     </data>
 

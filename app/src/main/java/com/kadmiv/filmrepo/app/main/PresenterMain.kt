@@ -1,4 +1,4 @@
-package com.kadmiv.filmrepo.app.activity_main
+package com.kadmiv.filmrepo.app.main
 
 import android.support.design.widget.NavigationView
 import android.util.Log
@@ -18,13 +18,12 @@ class PresenterMain(var mView: IView?) : BasePresenter(),
     NavigationView.OnNavigationItemSelectedListener,
     AppBarListener<FilmModel> {
 
-    var mRepo: Repo? = null
+    var mRepo: Repo? = Repo
 
     override fun onStart() {
         mRepo = Repo
         mRepo?.addListener(this)
         mRepo?.getFavorites()
-//        mRepo.getDBSample()
     }
 
 
@@ -38,7 +37,7 @@ class PresenterMain(var mView: IView?) : BasePresenter(),
         mRepo = null
     }
 
-    override fun onReceivingSaved(items: List<FilmModel>) {
+    override fun onReceivingFavorits(items: List<FilmModel>) {
         mView?.initRecyclerView(items)
     }
 
@@ -70,21 +69,4 @@ class PresenterMain(var mView: IView?) : BasePresenter(),
 
         return true
     }
-
-    companion object {
-        private var instance: PresenterMain? = null
-        fun getInstance(mView: IView?): PresenterMain {
-            if (instance == null)
-                instance = PresenterMain(mView!!)
-            else
-                if (mView != null)
-                    instance?.mView = mView
-            return instance!!
-        }
-
-        fun setInstanceNull() {
-            instance = null
-        }
-    }
-
 }

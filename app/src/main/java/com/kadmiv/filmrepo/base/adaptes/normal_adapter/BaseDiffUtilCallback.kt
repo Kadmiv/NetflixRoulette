@@ -1,9 +1,9 @@
 package com.kadmiv.filmrepo.base.adaptes.normal_adapter
 
 import android.support.v7.util.DiffUtil
-import com.kadmiv.filmrepo.repo.db.models.BaseItem
+import com.kadmiv.filmrepo.repo.db.models.BaseModel
 
-class BaseDiffUtilCallback<I : BaseItem>(val oldList: List<I>, val newList: List<I>) :
+class BaseDiffUtilCallback<I : BaseModel>(val oldList: List<I>, val newList: List<I>) :
     DiffUtil.Callback() {
 
     override fun getOldListSize(): Int {

@@ -1,5 +1,5 @@
 package com.kadmiv.filmrepo.repo.db.models
 
-abstract class BaseItem() {
+abstract class BaseModel() {
     abstract var id: Long
 }

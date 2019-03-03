@@ -7,9 +7,9 @@ import android.support.v7.widget.RecyclerView
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import com.kadmiv.filmrepo.base.adaptes.BaseViewHolder
-import com.kadmiv.filmrepo.repo.db.models.BaseItem
+import com.kadmiv.filmrepo.repo.db.models.BaseModel
 
-class BaseNormalAdapter<I : BaseItem, L>(
+class BaseNormalAdapter<I : BaseModel, L>(
         private var listener: L,
         private val viewType: Int
 ) :

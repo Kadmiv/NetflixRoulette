@@ -13,7 +13,7 @@ interface RepoListener {
     fun onConnectionError() {}
     fun onStartLoading() {}
 
-    fun onReceivingSaved(items: List<FilmModel>) {}
+    fun onReceivingFavorits(items: List<FilmModel>) {}
 
     fun onReceivingFindByTitleResults(items: FilmsByTitle) {}
     fun onReceivingFindByTitleSuggestions(items: FilmsByTitle) {}

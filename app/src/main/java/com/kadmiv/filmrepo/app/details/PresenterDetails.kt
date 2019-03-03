@@ -1,4 +1,4 @@
-package com.kadmiv.filmrepo.app.activity_item_details
+package com.kadmiv.filmrepo.app.details
 
 import android.support.v4.view.ViewPager
 import android.util.Log
@@ -6,9 +6,10 @@ import com.kadmiv.filmrepo.base.BasePresenter
 import com.kadmiv.filmrepo.base.interfaces.RepoListener
 import com.kadmiv.filmrepo.repo.Repo
 import com.kadmiv.filmrepo.repo.db.models.FilmModel
+import com.kadmiv.filmrepo.repo.rest.models.more_info.MoreInfo
 import com.kadmiv.filmrepo.repo.rest.models.person_movie_model.FilmsByPerson
 import com.kadmiv.filmrepo.repo.rest.models.title_movie_model.FilmsByTitle
-import com.kadmiv.filmrepo.utils.calculateByTitleResultsData
+import com.kadmiv.filmrepo.utils.createFilmItem
 import com.kadmiv.filmrepo.utils.enums.SearchType
 import com.kadmiv.filmrepo.utils.enums.SearchType.*
 import com.kadmiv.filmrepo.utils.enums.ViewState.*
@@ -16,13 +17,16 @@ import java.util.*
 
 class PresenterDetails(var mView: IView?) : BasePresenter(), RepoListener, ViewPager.OnPageChangeListener {
 
-    var mRepo: Repo? = null
-    var oldList: ArrayList<FilmModel>? = null
-    private lateinit var favorite: List<FilmModel>
+    var mRepo: Repo? = Repo
+    var oldList: ArrayList<FilmModel> = arrayListOf()
+    var inLoadingProcess = false
+    private var favorites: List<FilmModel>? = null
     lateinit var searchType: SearchType
+    var currentItemPosition = 0
+    private var rewritingItemsCount = 0
+    private var processedItemsCount = 0
 
     override fun onStart() {
-        mRepo = Repo
         mRepo?.addListener(this)
         mRepo?.getFavorites()
     }
@@ -37,12 +41,11 @@ class PresenterDetails(var mView: IView?) : BasePresenter(), RepoListener, ViewP
     }
 
     fun onBackButtonPressed() {
-        mView?.closeActivity()
+        mView?.closeActivity(oldList, currentItemPosition)
     }
 
-    override fun onReceivingSaved(items: List<FilmModel>) {
-        favorite = items
-        checkForFavorite(oldList!!)
+    override fun onReceivingFavorits(items: List<FilmModel>) {
+        favorites = items
         mView?.setViewState(CONTENT_STATE.value)
     }
 
@@ -72,36 +75,45 @@ class PresenterDetails(var mView: IView?) : BasePresenter(), RepoListener, ViewP
     override fun onPageScrolled(p0: Int, p1: Float, p2: Int) {}
 
     override fun onPageSelected(position: Int) {
-        Log.d("12", "Max ${oldList!!.size} current $position")
-        mView?.putBindingModel(position)
-        mView?.saveItemPosition(position)
+        Log.d("12", "Max ${oldList.size} current $position")
+        mView?.putBindingModel(oldList[position])
         isNeedLoadNewData(position)
+        currentItemPosition = position
     }
 
-    var currentItemPosition = 0
     private fun isNeedLoadNewData(position: Int) {
         if (searchType == EMPTY_TYPE)
             return
-        currentItemPosition = position
-        if (position * 1.0 / oldList!!.size > 0.8) {
-            Log.d("12", "loadNextPage ")
-            mRepo?.getNextPageWithFilmByTitle()
+
+        if (position >= oldList.size - 10 && !inLoadingProcess) {
+            if (!mView!!.hasConnection())
+                mView?.setViewState(NETWORK_ERROR_STATE.value)
+            else {
+                Log.d("12", "loadNextPage ")
+                mRepo?.getNextPageWithFilmByTitle()
+            }
         }
     }
 
     override fun onStartLoading() {
         Log.d("12", "onStartLoading ")
         mView?.setViewState(LOADING_STATE.value)
+        inLoadingProcess = true
     }
 
     override fun onResponseError(error: String) {
-        Log.d("12", "ResponseError " + error)
+        Log.d("12", "ResponseError $error")
         mView?.setViewState(ERROR_STATE.value)
+        inLoadingProcess = false
     }
 
     override fun onConnectionError() {
         Log.d("12", "ConnectionError ")
         mView?.setViewState(NETWORK_ERROR_STATE.value)
+        inLoadingProcess = false
+    }
+
+    override fun onReceivingFindByPersonResults(items: FilmsByPerson) {
     }
 
     override fun onReceivingFindByTitleResults(items: FilmsByTitle) {
@@ -111,51 +123,26 @@ class PresenterDetails(var mView: IView?) : BasePresenter(), RepoListener, ViewP
             return
         }
 
-        if (oldList == null) {
-            oldList = arrayListOf()
-        }
-
-        val newItems = calculateByTitleResultsData(items)
-
-        newItems.forEach { item -> item.isFavorite = checkIsFavorite(item.id) }
-        oldList?.addAll(newItems)
-        mView?.setViewState(CONTENT_STATE.value)
-        mView?.addNewItems(newItems)
-    }
-
-    private fun checkIsFavorite(id: Long): Boolean {
-        favorite.forEach { item -> if (item.id == id) return true }
-        return false
-    }
-
-    override fun onReceivingFindByPersonResults(items: FilmsByPerson) {
-        if (items.total_pages == 0 || items.results.isEmpty()) {
-            mView?.setViewState(EMPTY_STATE.value)
-            return
-        }
-        mView?.setViewState(CONTENT_STATE.value)
-    }
-
-    private fun checkForFavorite(mValues: ArrayList<FilmModel>) {
-        mValues.forEach { item ->
-            if (!item.isFavorite)
-                item.isFavorite = checkIsFavorite(item.id)
+        rewritingItemsCount = items.results.size
+        processedItemsCount = 0
+        items.results.forEach { result ->
+            mRepo?.getMoreInfo(result.id.toLong())
         }
     }
 
-    companion object {
-        private var instance: PresenterDetails? = null
-        fun getInstance(mView: IView?): PresenterDetails {
-            if (instance == null)
-                instance = PresenterDetails(mView!!)
-            else
-                if (mView != null)
-                    instance?.mView = mView
-            return instance!!
-        }
+    override fun onReceivingMoreDetailsResults(item: MoreInfo) {
 
-        fun setInstanceNull() {
-            instance = null
+        favorites ?: return
+        val newItem = createFilmItem(item, favorites!!) ?: return
+
+        oldList.add(newItem)
+        mView?.addNewItems(arrayListOf(newItem))
+
+        processedItemsCount++
+        Log.d("12", "processedItemsCount = $processedItemsCount allCount = $rewritingItemsCount")
+        if (processedItemsCount >= rewritingItemsCount) {
+            mView?.setViewState(CONTENT_STATE.value)
+            inLoadingProcess = false
         }
     }
 }

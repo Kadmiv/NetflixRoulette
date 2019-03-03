@@ -5,9 +5,11 @@ import com.kadmiv.filmrepo.base.interfaces.RepoListener
 import com.kadmiv.filmrepo.repo.db.AppDataBase
 import com.kadmiv.filmrepo.repo.db.models.FilmModel
 import com.kadmiv.filmrepo.repo.rest.Api
+import com.kadmiv.filmrepo.repo.rest.CallbackWithRetry
 import com.kadmiv.filmrepo.repo.rest.models.more_info.MoreInfo
 import com.kadmiv.filmrepo.repo.rest.models.person_movie_model.FilmsByPerson
 import com.kadmiv.filmrepo.repo.rest.models.title_movie_model.FilmsByTitle
+import com.kadmiv.filmrepo.utils.CallUtils
 import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.functions.Function
@@ -74,7 +76,7 @@ object Repo {
     }
 
     fun getFavorites() {
-        listeners.forEach { listener -> listener.onStartLoading() }
+//        listeners.forEach { listener -> listener.onStartLoading() }
         Observable.just("")
             .map(object : Function<String, List<FilmModel>> {
                 override fun apply(t: String): List<FilmModel> {
@@ -83,7 +85,7 @@ object Repo {
             })
             .subscribeOn(Schedulers.newThread())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe { items -> listeners.forEach { listener -> listener.onReceivingSaved(items) } }
+            .subscribe { items -> listeners.forEach { listener -> listener.onReceivingFavorits(items) } }
 
     }
 
@@ -91,7 +93,8 @@ object Repo {
         currentQuery = query
         currentPage = 1
         listeners.forEach { listener -> listener.onStartLoading() }
-        api.findByTitle(query, currentPage, API_KEY).enqueue(object : Callback<FilmsByTitle> {
+        val call = api.findByTitle(query, currentPage, API_KEY)
+        call.enqueue(object : Callback<FilmsByTitle> {
             override fun onFailure(
                 call: Call<FilmsByTitle>,
                 t: Throwable
@@ -147,7 +150,9 @@ object Repo {
     }
 
     fun getMoreInfo(id: Long) {
-        api.findById(id, API_KEY).enqueue(object : Callback<MoreInfo> {
+        val call = api.findById(id, API_KEY)
+
+        CallUtils.enqueueWithRetry(call, object : CallbackWithRetry<MoreInfo>(call) {
             override fun onFailure(
                 call: Call<MoreInfo>,
                 t: Throwable
@@ -174,7 +179,10 @@ object Repo {
         currentQuery = query
         currentPage = 1
         listeners.forEach { listener -> listener.onStartLoading() }
-        api.findByPerson(query, currentPage, API_KEY).enqueue(object : Callback<FilmsByPerson> {
+
+        val call = api.findByPerson(query, currentPage, API_KEY)
+
+        CallUtils.enqueueWithRetry(call, object : CallbackWithRetry<FilmsByPerson>(call) {
             override fun onFailure(
                 call: Call<FilmsByPerson>,
                 t: Throwable
@@ -207,14 +215,15 @@ object Repo {
             return
 
         listeners.forEach { listener -> listener.onStartLoading() }
-        api.findByPerson(currentQuery, currentPage, API_KEY).enqueue(object : Callback<FilmsByPerson> {
+
+        val call = api.findByPerson(currentQuery, currentPage, API_KEY)
+
+        CallUtils.enqueueWithRetry(call, object : CallbackWithRetry<FilmsByPerson>(call) {
             override fun onFailure(
                 call: Call<FilmsByPerson>,
                 t: Throwable
             ) {
                 Log.d("12", "Error ${t.stackTrace} getNextPageWithFilmByPerson")
-                listeners.forEach { listener -> listener.onConnectionError() }
-
             }
 
             override fun onResponse(
@@ -239,7 +248,6 @@ object Repo {
                 t: Throwable
             ) {
                 Log.d("12", "Error " + t.stackTrace.toString())
-                listeners.forEach { listener -> listener.onConnectionError() }
             }
 
             override fun onResponse(
@@ -264,7 +272,6 @@ object Repo {
                 t: Throwable
             ) {
                 Log.d("12", "Error ${t.stackTrace} getSuggestionsByPerson")
-                listeners.forEach { listener -> listener.onConnectionError() }
 
             }
 
