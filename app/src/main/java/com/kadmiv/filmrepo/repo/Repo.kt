@@ -158,7 +158,7 @@ object Repo {
                 t: Throwable
             ) {
                 Log.d("12", "Error ${t.stackTrace} getMoreInfo")
-                listeners.forEach { listener -> listener.onConnectionError() }
+//                listeners.forEach { listener -> listener.onConnectionError() }
             }
 
             override fun onResponse(
@@ -188,8 +188,6 @@ object Repo {
                 t: Throwable
             ) {
                 Log.d("12", "Error ${t.stackTrace} findFilmByPerson")
-                listeners.forEach { listener -> listener.onConnectionError() }
-
             }
 
             override fun onResponse(
